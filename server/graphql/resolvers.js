@@ -3,6 +3,7 @@
 
 import { User } from "../models/User.js";
 import { Job } from "../models/Job.js";
+import { hashPassword, comparePasswords } from "../../utils/bcrypt.js";
 
 export const resolvers = {
   Query: {
@@ -15,18 +16,20 @@ export const resolvers = {
       return job;
     },
     allUsers: async () => {
-      const users = await User.find({});
+      const users = await User.find({}).populate("jobs");
       return users;
     },
     me: (root, args, contextValue) => {
-      // console.log(contextValue);
+      // console.log("contextValue: " + contextValue.user);
       return contextValue.user;
     },
   },
 
   Mutation: {
-    registerUser: async (root, args) => {
-      const user = await User.create({ ...args });
+    registerUser: async (root, { name, email, password }) => {
+      const hashedPassword = await hashPassword(password);
+      const user = new User({ name, email, password: hashedPassword });
+      await user.save();
       return user;
     },
 
@@ -34,10 +37,10 @@ export const resolvers = {
       const { email, password } = args;
 
       const user = await User.findOne({ email });
-      if (!user) throw new Error("wrong credentials -user");
+      if (!user) throw new Error("wrong credentials");
 
-      const isMatch = await user.comparePasswords(password);
-      if (!isMatch) throw new Error("wrong credentials -pw");
+      const isMatch = await comparePasswords(password, user.password);
+      if (!isMatch) throw new Error("wrong credentials");
 
       const token = user.createJWT();
       return token;
@@ -45,16 +48,6 @@ export const resolvers = {
 
     createJob: async (root, args, { user }) => {
       if (!user) throw new Error("not authenticated");
-
-      // const job = new Job({ ...args, createdBy: user._id });
-      // console.log(job);
-      // try {
-      //   await job.save();
-      //   user.jobs = user.jobs.concat(job);
-      //   await user.save();
-      // } catch (error) {
-      //   console.log(error);
-      // }
 
       const job = await Job.create({ ...args, createdBy: user._id });
       try {
